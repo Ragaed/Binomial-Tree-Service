@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "backward_induction.h"
+#include "base_lattice.h"
 #include "rate_lattice.h"
 
 void expect_near(double actual, double expected) {
@@ -26,6 +27,76 @@ void constructs_one_step_lattice() {
     expect_near(initial_level.at(0), 0.05);
     expect_near(one_step_level.at(0), 0.055);
     expect_near(one_step_level.at(1), 0.045);
+}
+
+void accesses_rate_lattice_through_base_interface() {
+    // Arrange
+    RateLattice lattice(0.05, 1.1, 0.9, 1);
+    const BaseLattice& base_lattice = lattice;
+
+    // Act
+    const BaseLattice::Layer& level = base_lattice.nodes_at(1);
+    const double up_rate = base_lattice.value_at(1, 0);
+    const double down_rate = base_lattice.value_at(1, 1);
+
+    // Assert
+    assert(level.size() == 2);
+    expect_near(up_rate, 0.055);
+    expect_near(down_rate, 0.045);
+}
+
+void rejects_invalid_base_lattice_coordinates() {
+    // Arrange
+    RateLattice lattice(0.05, 1.1, 0.9, 1);
+    const BaseLattice& base_lattice = lattice;
+    bool rejected_level = false;
+    bool rejected_node = false;
+
+    // Act
+    try {
+        base_lattice.nodes_at(2);
+    } catch (const std::out_of_range&) {
+        rejected_level = true;
+    }
+    try {
+        base_lattice.value_at(1, 2);
+    } catch (const std::out_of_range&) {
+        rejected_node = true;
+    }
+
+    // Assert
+    assert(rejected_level);
+    assert(rejected_node);
+}
+
+void prices_through_base_lattice_interface() {
+    // Arrange
+    RateLattice lattice(0.05, 1.0, 1.0, 1);
+    const BaseLattice& base_lattice = lattice;
+    BackwardInductionEngine engine;
+    const std::vector<double> terminal_payoffs = {2.0, 4.0};
+
+    // Act
+    const double present_value = engine.present_value(
+        base_lattice, terminal_payoffs);
+
+    // Assert
+    expect_near(present_value, 3.0 / 1.05);
+}
+
+void rejects_invalid_layered_lattice_shape() {
+    // Arrange
+    bool rejected_shape = false;
+
+    // Act
+    try {
+        LayeredLattice lattice({BaseLattice::Layer{1.0, 2.0}});
+    } catch (const std::invalid_argument&) {
+        rejected_shape = true;
+    }
+
+    // Assert
+    assert(rejected_shape);
 }
 
 void constructs_two_step_recombining_lattice() {
@@ -155,17 +226,17 @@ void stores_full_valuation_lattice() {
         valuation_horizon + 1, 1.0);
 
     // Act
-    const std::vector<std::vector<double>> values = engine.valuation_lattice(
+    const BaseLattice& values = engine.valuation_lattice(
         lattice, one_unit_terminal_payoffs);
     const double rolling_slice_zero_time_value =
         engine.present_value(lattice, one_unit_terminal_payoffs);
 
     // Assert
-    assert(values.size() == 3);
-    assert(values[0].size() == 1);
-    assert(values[1].size() == 2);
-    assert(values[2].size() == 3);
-    expect_near(values[0].at(0), rolling_slice_zero_time_value);
+    assert(values.levels() == 3);
+    assert(values.nodes_at(0).size() == 1);
+    assert(values.nodes_at(1).size() == 2);
+    assert(values.nodes_at(2).size() == 3);
+    expect_near(values.value_at(0, 0), rolling_slice_zero_time_value);
 }
 
 void rejects_invalid_pricing_inputs() {
@@ -206,6 +277,10 @@ void rejects_invalid_pricing_inputs() {
 
 int main() {
     constructs_one_step_lattice();
+    accesses_rate_lattice_through_base_interface();
+    rejects_invalid_base_lattice_coordinates();
+    prices_through_base_lattice_interface();
+    rejects_invalid_layered_lattice_shape();
     constructs_two_step_recombining_lattice();
     rejects_non_positive_parameters();
     discounts_flat_zero_coupon_with_rolling_slice();
