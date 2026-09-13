@@ -5,10 +5,20 @@
 
 #include "backward_induction.h"
 #include "base_lattice.h"
+#include "cash_flow_lattice.h"
 #include "rate_lattice.h"
 
 void expect_near(double actual, double expected) {
     assert(std::fabs(actual - expected) < 1e-9);
+}
+
+CashFlowLattice terminal_cash_flows(const std::vector<double>& terminal_values) {
+    std::vector<BaseLattice::Layer> layers(terminal_values.size());
+    for (std::size_t level = 0; level < layers.size(); ++level) {
+        layers[level].resize(level + 1, 0.0);
+    }
+    layers.back() = terminal_values;
+    return CashFlowLattice(std::move(layers));
 }
 
 void constructs_one_step_lattice() {
@@ -74,14 +84,96 @@ void prices_through_base_lattice_interface() {
     RateLattice lattice(0.05, 1.0, 1.0, 1);
     const BaseLattice& base_lattice = lattice;
     BackwardInductionEngine engine;
-    const std::vector<double> terminal_payoffs = {2.0, 4.0};
+    const CashFlowLattice cash_flows = terminal_cash_flows({2.0, 4.0});
 
     // Act
     const double present_value = engine.present_value(
-        base_lattice, terminal_payoffs);
+        base_lattice, cash_flows);
 
     // Assert
     expect_near(present_value, 3.0 / 1.05);
+}
+
+void prices_coupon_bond_from_cash_flow_lattice() {
+    // Arrange
+    constexpr double rate = 0.05;
+    RateLattice rate_lattice(rate, 1.0, 1.0, 3);
+    CashFlowLattice cash_flows({
+        {0.0},
+        {5.0, 5.0},
+        {5.0, 5.0, 5.0},
+        {105.0, 105.0, 105.0, 105.0}});
+    BackwardInductionEngine engine;
+    const double expected_present_value =
+        5.0 / (1.0 + rate)
+        + 5.0 / std::pow(1.0 + rate, 2)
+        + 105.0 / std::pow(1.0 + rate, 3);
+
+    // Act
+    const double present_value = engine.present_value(
+        rate_lattice, cash_flows);
+
+    // Assert
+    expect_near(present_value, expected_present_value);
+}
+
+void adds_terminal_values_without_replacing_final_cash_flows() {
+    // Arrange
+    CashFlowLattice cash_flows({
+        {0.0},
+        {5.0, 5.0},
+        {5.0, 5.0, 5.0}});
+
+    // Act
+    cash_flows.add_terminal_values({100.0, 100.0, 100.0});
+
+    // Assert
+    expect_near(cash_flows.value_at(2, 0), 105.0);
+    expect_near(cash_flows.value_at(2, 1), 105.0);
+    expect_near(cash_flows.value_at(2, 2), 105.0);
+}
+
+void prices_intermediate_cash_flows_with_zero_terminal_layer() {
+    // Arrange
+    constexpr double rate = 0.05;
+    RateLattice rate_lattice(rate, 1.0, 1.0, 3);
+    CashFlowLattice cash_flows({
+        {0.0},
+        {2.0, 2.0},
+        {0.0, 0.0, 0.0},
+        {0.0, 0.0, 0.0, 0.0}});
+    BackwardInductionEngine engine;
+
+    // Act
+    const double present_value = engine.present_value(
+        rate_lattice, cash_flows);
+
+    // Assert
+    expect_near(present_value, 2.0 / (1.0 + rate));
+}
+
+void rejects_invalid_cash_flow_lattice_inputs() {
+    // Arrange
+    bool rejected_empty_lattice = false;
+    bool rejected_terminal_shape = false;
+
+    // Act
+    try {
+        CashFlowLattice cash_flows({});
+    } catch (const std::invalid_argument&) {
+        rejected_empty_lattice = true;
+    }
+
+    CashFlowLattice cash_flows({{0.0}, {1.0, 1.0}});
+    try {
+        cash_flows.add_terminal_values({100.0});
+    } catch (const std::invalid_argument&) {
+        rejected_terminal_shape = true;
+    }
+
+    // Assert
+    assert(rejected_empty_lattice);
+    assert(rejected_terminal_shape);
 }
 
 void rejects_invalid_layered_lattice_shape() {
@@ -152,14 +244,14 @@ void discounts_flat_zero_coupon_with_rolling_slice() {
     constexpr double flat_rate = 0.05;
     RateLattice lattice(flat_rate, 1.0, 1.0, valuation_horizon);
     BackwardInductionEngine engine;
-    const std::vector<double> one_unit_terminal_payoffs(
-        valuation_horizon + 1, 1.0);
+    const CashFlowLattice cash_flows = terminal_cash_flows(
+        std::vector<double>(valuation_horizon + 1, 1.0));
     const double expected_discounted_value =
         std::pow(1.0 + flat_rate, -valuation_horizon);
 
     // Act
     const double zero_coupon_present_value =
-        engine.present_value(lattice, one_unit_terminal_payoffs);
+        engine.present_value(lattice, cash_flows);
 
     // Assert
     expect_near(zero_coupon_present_value, expected_discounted_value);
@@ -175,8 +267,8 @@ void uses_matching_rate_nodes_and_supports_larger_rate_lattice() {
     RateLattice rate_lattice(
         root_rate, up_factor, down_factor, rate_lattice_horizon);
     BackwardInductionEngine engine;
-    const std::vector<double> one_unit_terminal_payoffs(
-        valuation_horizon + 1, 1.0);
+    const CashFlowLattice cash_flows = terminal_cash_flows(
+        std::vector<double>(valuation_horizon + 1, 1.0));
     const double up_node_rate = root_rate * up_factor;
     const double down_node_rate = root_rate * down_factor;
     const double value_at_up_node = 1.0 / (1.0 + up_node_rate);
@@ -187,7 +279,7 @@ void uses_matching_rate_nodes_and_supports_larger_rate_lattice() {
 
     // Act
     const double zero_time_present_value =
-        engine.present_value(rate_lattice, one_unit_terminal_payoffs);
+        engine.present_value(rate_lattice, cash_flows);
 
     // Assert
     expect_near(zero_time_present_value, expected_zero_time_value);
@@ -202,8 +294,8 @@ void supports_configurable_probability() {
     constexpr double down_state_payoff = 4.0;
     RateLattice lattice(rate, 1.0, 1.0, 1);
     BackwardInductionEngine engine(probability_of_down_move);
-    const std::vector<double> terminal_payoffs = {
-        up_state_payoff, down_state_payoff};
+    const CashFlowLattice cash_flows = terminal_cash_flows({
+        up_state_payoff, down_state_payoff});
     const double expected_zero_time_value =
         (probability_of_down_move * down_state_payoff
          + probability_of_up_move * up_state_payoff)
@@ -211,7 +303,7 @@ void supports_configurable_probability() {
 
     // Act
     const double zero_time_present_value =
-        engine.present_value(lattice, terminal_payoffs);
+        engine.present_value(lattice, cash_flows);
 
     // Assert
     expect_near(zero_time_present_value, expected_zero_time_value);
@@ -222,14 +314,14 @@ void stores_full_valuation_lattice() {
     constexpr int valuation_horizon = 2;
     RateLattice lattice(0.05, 1.0, 1.0, valuation_horizon);
     BackwardInductionEngine engine;
-    const std::vector<double> one_unit_terminal_payoffs(
-        valuation_horizon + 1, 1.0);
+    const CashFlowLattice cash_flows = terminal_cash_flows(
+        std::vector<double>(valuation_horizon + 1, 1.0));
 
     // Act
     const BaseLattice& values = engine.valuation_lattice(
-        lattice, one_unit_terminal_payoffs);
+        lattice, cash_flows);
     const double rolling_slice_zero_time_value =
-        engine.present_value(lattice, one_unit_terminal_payoffs);
+        engine.present_value(lattice, cash_flows);
 
     // Assert
     assert(values.levels() == 3);
@@ -247,8 +339,8 @@ void rejects_invalid_pricing_inputs() {
     constexpr int available_rate_steps = 1;
     constexpr double invalid_probability = 1.1;
     constexpr int requested_valuation_horizon = 3;
-    const std::vector<double> terminal_payoffs_for_requested_horizon(
-        requested_valuation_horizon + 1, 1.0);
+    const CashFlowLattice cash_flows = terminal_cash_flows(
+        std::vector<double>(requested_valuation_horizon + 1, 1.0));
     RateLattice lattice(
         flat_rate,
         no_rate_change_up_factor,
@@ -265,7 +357,7 @@ void rejects_invalid_pricing_inputs() {
     }
     try {
         BackwardInductionEngine engine;
-        engine.present_value(lattice, terminal_payoffs_for_requested_horizon);
+        engine.present_value(lattice, cash_flows);
     } catch (const std::invalid_argument&) {
         rejected_payoff_dimensions = true;
     }
@@ -280,6 +372,10 @@ int main() {
     accesses_rate_lattice_through_base_interface();
     rejects_invalid_base_lattice_coordinates();
     prices_through_base_lattice_interface();
+    prices_coupon_bond_from_cash_flow_lattice();
+    adds_terminal_values_without_replacing_final_cash_flows();
+    prices_intermediate_cash_flows_with_zero_terminal_layer();
+    rejects_invalid_cash_flow_lattice_inputs();
     rejects_invalid_layered_lattice_shape();
     constructs_two_step_recombining_lattice();
     rejects_non_positive_parameters();
