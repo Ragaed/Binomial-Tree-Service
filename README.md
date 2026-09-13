@@ -46,6 +46,28 @@ The behavior is defined by these BDD scenarios:
 - Given a probability outside `[0.0, 1.0]`, an insufficient rate lattice, or
 	invalid payoff dimensions, the engine rejects the request.
 
+## Base lattice shape contract
+
+`BaseLattice` defines the shared geometry contract for lattice models without
+defining model-specific rollback behavior. Each layer is a one-dimensional
+vector, and layer `k` contains exactly `k + 1` nodes. Concrete models provide
+their own layer values while consumers can use the common interface:
+
+- Given a `BaseLattice` implementation, requesting `nodes_at(level)` returns
+	the ordered state vector for that level.
+- Given a valid level and node index, `value_at(level, node)` returns the value
+	at that coordinate.
+- Given an invalid level or node index, `nodes_at` or `value_at` rejects the
+	request with `std::out_of_range`.
+- Given a `RateLattice` through a `BaseLattice` reference, layer and node
+	access produce the same geometry and values as concrete access.
+- Given valid terminal payoffs and a `RateLattice`, backward induction keeps
+	its existing present-value and valuation-lattice results.
+- Given valid terminal payoffs, `valuation_lattice` returns a concrete
+	`LayeredLattice` with the shared layer and node accessors.
+- Given terminal payoffs deeper than the lattice, pricing rejects the invalid
+	shape with `std::invalid_argument`.
+
 ## Build and run the tests
 
 The project uses CMake and CTest. From the repository root, configure and build

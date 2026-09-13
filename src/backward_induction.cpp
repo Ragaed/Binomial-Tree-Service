@@ -2,10 +2,11 @@
 
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 namespace {
 
-void validate_valuation_inputs(const RateLattice& rate_lattice,
+void validate_valuation_inputs(const BaseLattice& rate_lattice,
                                const std::vector<double>& terminal_payoffs,
                                double down_move_probability) {
     if (!std::isfinite(down_move_probability)
@@ -23,7 +24,7 @@ void validate_valuation_inputs(const RateLattice& rate_lattice,
 }
 
 std::vector<double> calculate_previous_level_values(
-    const RateLattice& rate_lattice,
+    const BaseLattice& rate_lattice,
     const std::vector<double>& next_level_values,
     std::size_t current_level,
     double down_move_probability) {
@@ -58,7 +59,7 @@ BackwardInductionEngine::BackwardInductionEngine(double down_move_probability)
 }
 
 double BackwardInductionEngine::present_value(
-    const RateLattice& rate_lattice,
+    const BaseLattice& rate_lattice,
     const std::vector<double>& terminal_payoffs) const {
     validate_valuation_inputs(
         rate_lattice, terminal_payoffs, down_move_probability_);
@@ -75,8 +76,8 @@ double BackwardInductionEngine::present_value(
     return current_level_values.front();
 }
 
-std::vector<std::vector<double>> BackwardInductionEngine::valuation_lattice(
-    const RateLattice& rate_lattice,
+LayeredLattice BackwardInductionEngine::valuation_lattice(
+    const BaseLattice& rate_lattice,
     const std::vector<double>& terminal_payoffs) const {
     validate_valuation_inputs(
         rate_lattice, terminal_payoffs, down_move_probability_);
@@ -93,5 +94,5 @@ std::vector<std::vector<double>> BackwardInductionEngine::valuation_lattice(
             level - 1,
             down_move_probability_);
     }
-    return valuation_levels;
+    return LayeredLattice(std::move(valuation_levels));
 }
