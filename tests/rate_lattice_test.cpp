@@ -1,7 +1,8 @@
-#include <cassert>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
+
+#include <catch2/catch_test_macros.hpp>
 
 #include "backward_induction.h"
 #include "base_lattice.h"
@@ -9,7 +10,7 @@
 #include "rate_lattice.h"
 
 void expect_near(double actual, double expected) {
-    assert(std::fabs(actual - expected) < 1e-9);
+    CHECK(std::fabs(actual - expected) < 1e-9);
 }
 
 CashFlowLattice terminal_cash_flows(const std::vector<double>& terminal_values) {
@@ -31,9 +32,9 @@ void constructs_one_step_lattice() {
     const std::vector<double>& one_step_level = lattice.nodes_at(1);
 
     // Assert
-    assert(number_of_levels == 2);
-    assert(initial_level.size() == 1);
-    assert(one_step_level.size() == 2);
+    CHECK(number_of_levels == 2);
+    CHECK(initial_level.size() == 1);
+    CHECK(one_step_level.size() == 2);
     expect_near(initial_level.at(0), 0.05);
     expect_near(one_step_level.at(0), 0.055);
     expect_near(one_step_level.at(1), 0.045);
@@ -50,7 +51,7 @@ void accesses_rate_lattice_through_base_interface() {
     const double down_rate = base_lattice.value_at(1, 1);
 
     // Assert
-    assert(level.size() == 2);
+    CHECK(level.size() == 2);
     expect_near(up_rate, 0.055);
     expect_near(down_rate, 0.045);
 }
@@ -75,8 +76,8 @@ void rejects_invalid_base_lattice_coordinates() {
     }
 
     // Assert
-    assert(rejected_level);
-    assert(rejected_node);
+    CHECK(rejected_level);
+    CHECK(rejected_node);
 }
 
 void prices_through_base_lattice_interface() {
@@ -172,8 +173,8 @@ void rejects_invalid_cash_flow_lattice_inputs() {
     }
 
     // Assert
-    assert(rejected_empty_lattice);
-    assert(rejected_terminal_shape);
+    CHECK(rejected_empty_lattice);
+    CHECK(rejected_terminal_shape);
 }
 
 void rejects_invalid_layered_lattice_shape() {
@@ -188,7 +189,7 @@ void rejects_invalid_layered_lattice_shape() {
     }
 
     // Assert
-    assert(rejected_shape);
+    CHECK(rejected_shape);
 }
 
 void constructs_two_step_recombining_lattice() {
@@ -201,8 +202,8 @@ void constructs_two_step_recombining_lattice() {
     const double recombining_rate = 0.05 * 1.1 * 0.9;
 
     // Assert
-    assert(number_of_levels == 3);
-    assert(two_step_level.size() == 3);
+    CHECK(number_of_levels == 3);
+    CHECK(two_step_level.size() == 3);
     expect_near(two_step_level.at(0), 0.0605);
     expect_near(two_step_level.at(1), 0.0495);
     expect_near(two_step_level.at(2), 0.0405);
@@ -233,9 +234,9 @@ void rejects_non_positive_parameters() {
     }
 
     // Assert
-    assert(rejected_rate);
-    assert(rejected_factor);
-    assert(rejected_steps);
+    CHECK(rejected_rate);
+    CHECK(rejected_factor);
+    CHECK(rejected_steps);
 }
 
 void discounts_flat_zero_coupon_with_rolling_slice() {
@@ -324,10 +325,10 @@ void stores_full_valuation_lattice() {
         engine.present_value(lattice, cash_flows);
 
     // Assert
-    assert(values.levels() == 3);
-    assert(values.nodes_at(0).size() == 1);
-    assert(values.nodes_at(1).size() == 2);
-    assert(values.nodes_at(2).size() == 3);
+    CHECK(values.levels() == 3);
+    CHECK(values.nodes_at(0).size() == 1);
+    CHECK(values.nodes_at(1).size() == 2);
+    CHECK(values.nodes_at(2).size() == 3);
     expect_near(values.value_at(0, 0), rolling_slice_zero_time_value);
 }
 
@@ -363,26 +364,70 @@ void rejects_invalid_pricing_inputs() {
     }
 
     // Assert
-    assert(rejected_probability);
-    assert(rejected_payoff_dimensions);
+    CHECK(rejected_probability);
+    CHECK(rejected_payoff_dimensions);
 }
 
-int main() {
+TEST_CASE("constructs one-step lattice") {
     constructs_one_step_lattice();
+}
+
+TEST_CASE("accesses rate lattice through base interface") {
     accesses_rate_lattice_through_base_interface();
+}
+
+TEST_CASE("rejects invalid base lattice coordinates") {
     rejects_invalid_base_lattice_coordinates();
+}
+
+TEST_CASE("prices through base lattice interface") {
     prices_through_base_lattice_interface();
+}
+
+TEST_CASE("prices coupon bond from cash flow lattice") {
     prices_coupon_bond_from_cash_flow_lattice();
+}
+
+TEST_CASE("adds terminal values without replacing final cash flows") {
     adds_terminal_values_without_replacing_final_cash_flows();
+}
+
+TEST_CASE("prices intermediate cash flows with zero terminal layer") {
     prices_intermediate_cash_flows_with_zero_terminal_layer();
+}
+
+TEST_CASE("rejects invalid cash flow lattice inputs") {
     rejects_invalid_cash_flow_lattice_inputs();
+}
+
+TEST_CASE("rejects invalid layered lattice shape") {
     rejects_invalid_layered_lattice_shape();
+}
+
+TEST_CASE("constructs two-step recombining lattice") {
     constructs_two_step_recombining_lattice();
+}
+
+TEST_CASE("rejects non-positive parameters") {
     rejects_non_positive_parameters();
+}
+
+TEST_CASE("discounts flat zero coupon with rolling slice") {
     discounts_flat_zero_coupon_with_rolling_slice();
+}
+
+TEST_CASE("uses matching rate nodes and supports larger rate lattice") {
     uses_matching_rate_nodes_and_supports_larger_rate_lattice();
+}
+
+TEST_CASE("supports configurable probability") {
     supports_configurable_probability();
+}
+
+TEST_CASE("stores full valuation lattice") {
     stores_full_valuation_lattice();
+}
+
+TEST_CASE("rejects invalid pricing inputs") {
     rejects_invalid_pricing_inputs();
-    return 0;
 }
