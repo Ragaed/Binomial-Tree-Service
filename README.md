@@ -116,13 +116,23 @@ The cash-flow BDD scenarios are:
 
 ## Build and run the tests
 
-The project uses CMake and CTest. From the repository root, configure and build
-the project with:
+The project uses CMake, Catch2, and CTest. Catch2 is downloaded during the
+first CMake configuration. The test executable contains 16 independently
+discovered test cases, so a failure in one case does not prevent CTest from
+running the remaining cases.
+
+From the repository root, configure and build the project with:
 
 ```powershell
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
+cmake -S . -B build-catch2
+cmake --build build-catch2 --config Debug --parallel
+ctest --test-dir build-catch2 -C Debug --output-on-failure
+```
+
+To run one test case, use its name or a regular expression:
+
+```powershell
+ctest --test-dir build-catch2 -C Debug -R "coupon bond"
 ```
 
 The build enables C++17, `-Wall`, `-Wextra`, `-Wpedantic`, and `-Werror` for
@@ -131,8 +141,8 @@ UndefinedBehaviorSanitizer enabled:
 
 ```powershell
 cmake -S . -B build-sanitized -DENABLE_SANITIZERS=ON
-cmake --build build-sanitized --parallel
-ctest --test-dir build-sanitized --output-on-failure
+cmake --build build-sanitized --config Debug --parallel
+ctest --test-dir build-sanitized -C Debug --output-on-failure
 ```
 
 The same build and test steps run automatically in GitHub Actions for GCC,
