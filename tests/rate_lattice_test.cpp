@@ -1,7 +1,9 @@
 #include <cassert>
 #include <cmath>
 #include <stdexcept>
+#include <vector>
 
+#include "backward_induction.h"
 #include "rate_lattice.h"
 
 void expect_near(double actual, double expected) {
@@ -9,56 +11,207 @@ void expect_near(double actual, double expected) {
 }
 
 void constructs_one_step_lattice() {
+    // Arrange
     RateLattice lattice(0.05, 1.1, 0.9, 1);
 
-    assert(lattice.levels() == 2);
-    assert(lattice.nodes_at(0).size() == 1);
-    assert(lattice.nodes_at(1).size() == 2);
-    expect_near(lattice.nodes_at(0).at(0), 0.05);
-    expect_near(lattice.nodes_at(1).at(0), 0.055);
-    expect_near(lattice.nodes_at(1).at(1), 0.045);
+    // Act
+    const std::size_t number_of_levels = lattice.levels();
+    const std::vector<double>& initial_level = lattice.nodes_at(0);
+    const std::vector<double>& one_step_level = lattice.nodes_at(1);
+
+    // Assert
+    assert(number_of_levels == 2);
+    assert(initial_level.size() == 1);
+    assert(one_step_level.size() == 2);
+    expect_near(initial_level.at(0), 0.05);
+    expect_near(one_step_level.at(0), 0.055);
+    expect_near(one_step_level.at(1), 0.045);
 }
 
 void constructs_two_step_recombining_lattice() {
+    // Arrange
     RateLattice lattice(0.05, 1.1, 0.9, 2);
 
-    assert(lattice.levels() == 3);
-    assert(lattice.nodes_at(2).size() == 3);
-    expect_near(lattice.nodes_at(2).at(0), 0.0605);
-    expect_near(lattice.nodes_at(2).at(1), 0.0495);
-    expect_near(lattice.nodes_at(2).at(2), 0.0405);
-    expect_near(0.05 * 1.1 * 0.9, lattice.nodes_at(2).at(1));
+    // Act
+    const std::size_t number_of_levels = lattice.levels();
+    const std::vector<double>& two_step_level = lattice.nodes_at(2);
+    const double recombining_rate = 0.05 * 1.1 * 0.9;
+
+    // Assert
+    assert(number_of_levels == 3);
+    assert(two_step_level.size() == 3);
+    expect_near(two_step_level.at(0), 0.0605);
+    expect_near(two_step_level.at(1), 0.0495);
+    expect_near(two_step_level.at(2), 0.0405);
+    expect_near(recombining_rate, two_step_level.at(1));
 }
 
 void rejects_non_positive_parameters() {
+    // Arrange
     bool rejected_rate = false;
+    bool rejected_factor = false;
+    bool rejected_steps = false;
+
+    // Act
     try {
         RateLattice lattice(0.0, 1.1, 0.9, 1);
     } catch (const std::invalid_argument&) {
         rejected_rate = true;
     }
-    assert(rejected_rate);
-
-    bool rejected_factor = false;
     try {
         RateLattice lattice(0.05, -1.1, 0.9, 1);
     } catch (const std::invalid_argument&) {
         rejected_factor = true;
     }
-    assert(rejected_factor);
-
-    bool rejected_steps = false;
     try {
         RateLattice lattice(0.05, 1.1, 0.9, 0);
     } catch (const std::invalid_argument&) {
         rejected_steps = true;
     }
+
+    // Assert
+    assert(rejected_rate);
+    assert(rejected_factor);
     assert(rejected_steps);
+}
+
+void discounts_flat_zero_coupon_with_rolling_slice() {
+    // Arrange
+    constexpr int valuation_horizon = 3;
+    constexpr double flat_rate = 0.05;
+    RateLattice lattice(flat_rate, 1.0, 1.0, valuation_horizon);
+    BackwardInductionEngine engine;
+    const std::vector<double> one_unit_terminal_payoffs(
+        valuation_horizon + 1, 1.0);
+    const double expected_discounted_value =
+        std::pow(1.0 + flat_rate, -valuation_horizon);
+
+    // Act
+    const double zero_coupon_present_value =
+        engine.present_value(lattice, one_unit_terminal_payoffs);
+
+    // Assert
+    expect_near(zero_coupon_present_value, expected_discounted_value);
+}
+
+void uses_matching_rate_nodes_and_supports_larger_rate_lattice() {
+    // Arrange
+    constexpr double root_rate = 0.05;
+    constexpr double up_factor = 1.1;
+    constexpr double down_factor = 0.9;
+    constexpr int rate_lattice_horizon = 3;
+    constexpr int valuation_horizon = 2;
+    RateLattice rate_lattice(
+        root_rate, up_factor, down_factor, rate_lattice_horizon);
+    BackwardInductionEngine engine;
+    const std::vector<double> one_unit_terminal_payoffs(
+        valuation_horizon + 1, 1.0);
+    const double up_node_rate = root_rate * up_factor;
+    const double down_node_rate = root_rate * down_factor;
+    const double value_at_up_node = 1.0 / (1.0 + up_node_rate);
+    const double value_at_down_node = 1.0 / (1.0 + down_node_rate);
+    const double expected_zero_time_value =
+        (0.5 * value_at_up_node + 0.5 * value_at_down_node)
+        / (1.0 + root_rate);
+
+    // Act
+    const double zero_time_present_value =
+        engine.present_value(rate_lattice, one_unit_terminal_payoffs);
+
+    // Assert
+    expect_near(zero_time_present_value, expected_zero_time_value);
+}
+
+void supports_configurable_probability() {
+    // Arrange
+    constexpr double rate = 0.05;
+    constexpr double probability_of_down_move = 0.25;
+    constexpr double probability_of_up_move = 1.0 - probability_of_down_move;
+    constexpr double up_state_payoff = 2.0;
+    constexpr double down_state_payoff = 4.0;
+    RateLattice lattice(rate, 1.0, 1.0, 1);
+    BackwardInductionEngine engine(probability_of_down_move);
+    const std::vector<double> terminal_payoffs = {
+        up_state_payoff, down_state_payoff};
+    const double expected_zero_time_value =
+        (probability_of_down_move * down_state_payoff
+         + probability_of_up_move * up_state_payoff)
+        / (1.0 + rate);
+
+    // Act
+    const double zero_time_present_value =
+        engine.present_value(lattice, terminal_payoffs);
+
+    // Assert
+    expect_near(zero_time_present_value, expected_zero_time_value);
+}
+
+void stores_full_valuation_lattice() {
+    // Arrange
+    constexpr int valuation_horizon = 2;
+    RateLattice lattice(0.05, 1.0, 1.0, valuation_horizon);
+    BackwardInductionEngine engine;
+    const std::vector<double> one_unit_terminal_payoffs(
+        valuation_horizon + 1, 1.0);
+
+    // Act
+    const std::vector<std::vector<double>> values = engine.valuation_lattice(
+        lattice, one_unit_terminal_payoffs);
+    const double rolling_slice_zero_time_value =
+        engine.present_value(lattice, one_unit_terminal_payoffs);
+
+    // Assert
+    assert(values.size() == 3);
+    assert(values[0].size() == 1);
+    assert(values[1].size() == 2);
+    assert(values[2].size() == 3);
+    expect_near(values[0].at(0), rolling_slice_zero_time_value);
+}
+
+void rejects_invalid_pricing_inputs() {
+    // Arrange
+    constexpr double flat_rate = 0.05;
+    constexpr double no_rate_change_up_factor = 1.0;
+    constexpr double no_rate_change_down_factor = 1.0;
+    constexpr int available_rate_steps = 1;
+    constexpr double invalid_probability = 1.1;
+    constexpr int requested_valuation_horizon = 3;
+    const std::vector<double> terminal_payoffs_for_requested_horizon(
+        requested_valuation_horizon + 1, 1.0);
+    RateLattice lattice(
+        flat_rate,
+        no_rate_change_up_factor,
+        no_rate_change_down_factor,
+        available_rate_steps);
+    bool rejected_probability = false;
+    bool rejected_payoff_dimensions = false;
+
+    // Act
+    try {
+        BackwardInductionEngine engine(invalid_probability);
+    } catch (const std::invalid_argument&) {
+        rejected_probability = true;
+    }
+    try {
+        BackwardInductionEngine engine;
+        engine.present_value(lattice, terminal_payoffs_for_requested_horizon);
+    } catch (const std::invalid_argument&) {
+        rejected_payoff_dimensions = true;
+    }
+
+    // Assert
+    assert(rejected_probability);
+    assert(rejected_payoff_dimensions);
 }
 
 int main() {
     constructs_one_step_lattice();
     constructs_two_step_recombining_lattice();
     rejects_non_positive_parameters();
+    discounts_flat_zero_coupon_with_rolling_slice();
+    uses_matching_rate_nodes_and_supports_larger_rate_lattice();
+    supports_configurable_probability();
+    stores_full_valuation_lattice();
+    rejects_invalid_pricing_inputs();
     return 0;
 }

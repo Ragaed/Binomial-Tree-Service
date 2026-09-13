@@ -6,7 +6,7 @@ include(CTest)
 
 option(ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
-add_library(rate_lattice src/rate_lattice.cpp)
+add_library(rate_lattice src/rate_lattice.cpp src/backward_induction.cpp)
 target_compile_features(rate_lattice PUBLIC cxx_std_17)
 target_include_directories(rate_lattice PUBLIC src)
 

@@ -12,6 +12,40 @@ The current slice constructs a rate lattice from:
 
 At each level, nodes are ordered from all-up to all-down. Rates are stored internally as decimal values, so 5 percent is represented as `0.05`.
 
+## Backward induction behavior
+
+The pricing engine accepts a terminal payoff vector at step `N` and a
+pre-built short-rate lattice. The rate lattice may contain more levels than
+the payoff tree, but it must contain every rate level needed for discounting.
+Both structures use the same `(i, j)` node coordinates, including the shared
+`(0, 0)` root. The rate used at `(i, j)` is the rate stored at that exact rate
+lattice node; the `(0, 0)` rate is not reused elsewhere.
+
+For each node, the engine applies:
+
+```text
+V[i,j] = (q * V[i+1,j+1] + (1-q) * V[i+1,j]) / (1 + r[i,j])
+```
+
+The default down-move probability is `q = 0.5`, and callers may configure
+another down-move probability between `0.0` and `1.0`. With nodes ordered from
+all-up to all-down, `q` weights child `(i + 1, j + 1)`.
+
+The behavior is defined by these BDD scenarios:
+
+- Given a flat rate lattice and terminal payoff `1.0`, rolling back `N`
+	periods returns `(1 + r)^(-N)` within machine precision.
+- Given a larger rate lattice, the engine uses only the matching rate nodes
+	required by the payoff horizon and ignores extra levels.
+- Given a terminal payoff vector with `N + 1` values, level `i` contains
+	exactly `i + 1` valuation nodes.
+- Given full-lattice storage, the engine retains every valuation level for
+	diagnostics and visualization.
+- Given rolling-slice storage, the engine retains only the current slice and
+	uses O(N) working memory.
+- Given a probability outside `[0.0, 1.0]`, an insufficient rate lattice, or
+	invalid payoff dimensions, the engine rejects the request.
+
 ## Build and run the tests
 
 The project uses CMake and CTest. From the repository root, configure and build
