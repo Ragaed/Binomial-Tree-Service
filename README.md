@@ -14,20 +14,27 @@ At each level, nodes are ordered from all-up to all-down. Rates are stored inter
 
 ## Build and run the tests
 
-The current test executable uses only the C++ standard library and `g++`:
+The project uses CMake and CTest. From the repository root, configure and build
+the project with:
 
 ```powershell
-g++ -std=c++17 -Wall -Wextra -pedantic `
-  src/rate_lattice.cpp `
-  tests/rate_lattice_test.cpp `
-  -Isrc `
-  -o rate_lattice_test.exe
-./rate_lattice_test.exe
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 ```
 
-Run the command from the repository root, the directory containing `src` and `tests`.
+The build enables C++17, `-Wall`, `-Wextra`, `-Wpedantic`, and `-Werror` for
+GCC and Clang. To run the tests with AddressSanitizer and
+UndefinedBehaviorSanitizer enabled:
 
-The executable produces no output when all assertions pass. A failed assertion reports the source line that detected the failure.
+```powershell
+cmake -S . -B build-sanitized -DENABLE_SANITIZERS=ON
+cmake --build build-sanitized --parallel
+ctest --test-dir build-sanitized --output-on-failure
+```
+
+The same build and test steps run automatically in GitHub Actions for GCC,
+Clang, and the sanitizer configuration.
 
 ## Planned slices
 
